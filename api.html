@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Flappy Bird — Fixed</title>
+<style>
+  :root{
+    --bg:#70c5ce;
+    --panel: rgba(255,255,255,0.92);
+    --font: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  html,body{height:100%;margin:0;font-family:var(--font)}
+  .wrap{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background: linear-gradient(#70c5ce,#a0e0ff);
+    padding:20px;
+    box-sizing:border-box;
+  }
+  .game-area{
+    width:420px;
+    max-width:95vw;
+    background:var(--panel);
+    border-radius:12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    overflow:hidden;
+  }
+  header{
+    padding:12px 16px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  header h1{margin:0;font-size:18px}
+  .controls{
+    display:flex;
+    gap:8px;
+  }
+  .controls button{
+    background:#fff;border:1px solid #ddd;padding:6px 10px;border-radius:8px;cursor:pointer;
+  }
+  canvas{
+    display:block;
+    width:100%;
+    height:560px;
+    background: transparent;
+  }
+  .footer{
+    padding:10px 14px;font-size:13px;color:#333;display:flex;justify-content:space-between;align-items:center;
+  }
+  .hint{font-size:12px;color:#666}
+  .scoreboard{font-weight:700;color:#333}
+  @media (max-width:420px){
+    canvas{height:480px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="game-area" role="application" aria-label="Flappy Bird game">
+    <header>
+      <h1>Flappy Bird — Fixed</h1>
+      <div class="controls">
+        <button id="btnStart">Start</button>
+        <button id="btnRestart">Restart</button>
+        <button id="btnAssets">Show assets</button>
+      </div>
+    </header>
+
+    <canvas id="game"></canvas>
+
+    <div class="footer">
+      <div class="hint">Space / Click / Tap to flap</div>
+      <div class="scoreboard">Score: <span id="score">0</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ASSETS same approach as before (data URIs for convenience). Replace as needed. */
+const ASSETS = {
+  bird: `
+./Untitled.png
+`,
+  pipe:`
+./Renuka-Swamy-in-his-20s-3846579551 (1).png
+`,
+  bg: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='400' viewBox='0 0 800 400'>
+      <defs>
+        <linearGradient id='g' x1='0' x2='0' y1='0' y2='1'>
+          <stop offset='0' stop-color='#88d8ff'/>
+          <stop offset='1' stop-color='#bfeaff'/>
+        </linearGradient>
+      </defs>
+      <rect width='800' height='400' fill='url(#g)'/>
+      <g opacity='0.12'>
+        <ellipse cx='120' cy='80' rx='80' ry='30' fill='#fff' />
+        <ellipse cx='420' cy='60' rx='100' ry='40' fill='#fff' />
+        <ellipse cx='700' cy='120' rx='60' ry='25' fill='#fff' />
+      </g>
+    </svg>`
+  )}`,
+  sfx: {flap:'./flap.mp3', score:'./Score 2.mp3', hit:'./hit.mp3'}
+};
+
+const SETTINGS = {
+  gravity: 0.45,
+  flapStrength: -8.2,
+  pipeGap: 200,
+  pipeInterval: 2500,
+  pipeSpeed: 2.8,
+  birdWidth: 128,
+  birdHeight: 56,
+  groundHeight: 80
+};
+
+const PIPE_WIDTH = 60; // use constant so collision & drawing match
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d',{alpha:true});
+
+function resizeCanvas(){
+  const rect = canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(rect.width * ratio);
+  canvas.height = Math.round((rect.height || 560) * ratio);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+}
+function initCanvasHeight(){
+  const styleHeight = Math.round(canvas.clientWidth * 1.2);
+  canvas.style.height = styleHeight + 'px';
+}
+window.addEventListener('resize', ()=>{ initCanvasHeight(); resizeCanvas(); }, {passive:true});
+initCanvasHeight();
+resizeCanvas();
+
+function loadImage(src){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = (e) => rej(e);
+    img.src = src;
+  });
+}
+
+const IMGS = {};
+let state = {};
+let lastTime = 0;
+
+async function preload(){
+  try{ IMGS.bg = await loadImage(ASSETS.bg); }catch(e){ IMGS.bg = null; }
+  try{ IMGS.bird = await loadImage(ASSETS.bird); }catch(e){ IMGS.bird = null; }
+  try{ IMGS.pipe = await loadImage(ASSETS.pipe); }catch(e){ IMGS.pipe = null; }
+}
+
+function resetState(){
+  state = {
+    running: false,
+    score: 0,
+    highScore: state && state.highScore ? state.highScore : 0,
+    bird: {x: 80, y: 120, vy:0, rotation:0},
+    pipes: [],
+    lastPipeAt: 0,
+    startedAt: 0,
+    paused:false,
+    frame:0
+  };
+  document.getElementById('score').textContent = 0;
+}
+
+// spawn pipe pair
+function spawnPipe(){
+  const cw = canvas.clientWidth;
+  const ch = canvas.clientHeight;
+  const gap = SETTINGS.pipeGap;
+  const topHeight = 50 + Math.random() * (ch - gap - 200);
+  const pipe = { x: cw + 20, top: topHeight, passed: false };
+  state.pipes.push(pipe);
+}
+
+// start game
+function startGame(){
+  // If we're not running and the game had already run before, restart fresh
+  if(!state.running && state.frame > 0){
+    resetState();
+  }
+  if(state.running) return;
+  state.running = true;
+  state.startedAt = performance.now();
+  state.lastPipeAt = performance.now() - 120; // small offset so first pipe appears shortly after start
+  // ensure a pipe will appear after a short delay rather than instantly overlapping
+  // (we offset lastPipeAt so spawnPipe runs after pipeInterval - avoids immediate pipe too close)
+  // spawn one shortly to keep game flowing
+  spawnPipe();
+}
+
+// restart (force reset)
+function restartGame(){
+  resetState();
+  startGame();
+}
+
+// update loop
+function update(dt){
+  if(!state.running) return;
+  state.frame += 1;
+  const s = state;
+  s.bird.vy += SETTINGS.gravity;
+  s.bird.y += s.bird.vy;
+  s.bird.rotation = Math.max(-0.6, Math.min(1.2, s.bird.vy / 10));
+
+  const now = performance.now();
+  if(now - s.lastPipeAt > SETTINGS.pipeInterval){
+    spawnPipe();
+    s.lastPipeAt = now;
+  }
+
+  for(const p of s.pipes){
+    p.x -= SETTINGS.pipeSpeed;
+    if(!p.passed && p.x + PIPE_WIDTH < s.bird.x){
+      p.passed = true;
+      s.score += 1;
+      document.getElementById('score').textContent = s.score;
+      playSound('score');
+    }
+  }
+  s.pipes = s.pipes.filter(p => p.x > -300);
+
+  const groundY = canvas.clientHeight - SETTINGS.groundHeight;
+  if(s.bird.y + SETTINGS.birdHeight/2 >= groundY){
+    s.bird.y = groundY - SETTINGS.birdHeight/2;
+    gameOver();
+  }
+  if(s.bird.y - SETTINGS.birdHeight/2 <= 0){
+    s.bird.y = SETTINGS.birdHeight/2;
+    s.bird.vy = 0;
+  }
+
+  // collision with padding to prevent overly-sensitive touches
+  const H_PAD = 6; // horizontal collision padding (smaller collision box)
+  const V_PAD = 6; // vertical padding for gap
+  for(const p of s.pipes){
+    const pipeX = p.x;
+    const pipeW = PIPE_WIDTH;
+    let birdLeft = s.bird.x - SETTINGS.birdWidth/2;
+    let birdRight = s.bird.x + SETTINGS.birdWidth/2;
+    birdLeft += H_PAD;
+    birdRight -= H_PAD;
+    const gapTop = p.top + V_PAD;
+    const gapBottom = p.top + SETTINGS.pipeGap - V_PAD;
+    const birdY = s.bird.y;
+    // check horizontal overlap first (with padding)
+    if(birdRight > pipeX && birdLeft < pipeX + pipeW){
+      if(birdY - SETTINGS.birdHeight/2 < gapTop || birdY + SETTINGS.birdHeight/2 > gapBottom){
+        gameOver();
+      }
+    }
+  }
+}
+
+function gameOver(){
+  if(!state.running) return;
+  state.running = false;
+  playSound('hit');
+  if(state.score > state.highScore) state.highScore = state.score;
+  state.bird.vy = 2;
+  state.bird.rotation = 1.2;
+}
+
+// draw helpers
+function draw(){
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  ctx.clearRect(0,0,w,h);
+
+  if(IMGS.bg){
+    const img = IMGS.bg;
+    const scale = Math.max(w / img.width, h / img.height);
+    const ih = img.height * scale;
+    ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, w, ih);
+  } else {
+    const g = ctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'#88d8ff');
+    g.addColorStop(1,'#bfeaff');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,w,h);
+  }
+
+  for(const p of state.pipes){
+    drawPipe(p.x, 0, p.top);
+    drawPipe(p.x, p.top + SETTINGS.pipeGap, h - (p.top + SETTINGS.pipeGap) - SETTINGS.groundHeight);
+  }
+
+  const groundY = h - SETTINGS.groundHeight;
+  ctx.fillStyle = '#d6b370';
+  ctx.fillRect(0, groundY, w, SETTINGS.groundHeight);
+  ctx.fillStyle = '#c9a65a';
+  ctx.fillRect(0, groundY + SETTINGS.groundHeight - 12, w, 12);
+
+  ctx.save();
+  ctx.translate(state.bird.x, state.bird.y);
+  ctx.rotate(state.bird.rotation);
+  const bw = SETTINGS.birdWidth, bh = SETTINGS.birdHeight;
+  if(IMGS.bird){
+    ctx.drawImage(IMGS.bird, -bw/2, -bh/2, bw, bh);
+  } else {
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.ellipse(0,0,bw/2,bh/2,0,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  if(!state.running){
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.font = '18px '+getComputedStyle(document.body).fontFamily;
+    ctx.textAlign = 'center';
+    ctx.fillText(state.frame === 0 ? 'Click / Tap / Space to start' : 'Game Over — Click Start or Restart', w/2, 48);
+    ctx.font = '14px '+getComputedStyle(document.body).fontFamily;
+    ctx.fillText('High: ' + state.highScore, w/2, 68);
+  }
+}
+
+function drawPipe(x, y, h){
+  ctx.save();
+  if(IMGS.pipe){
+    const img = IMGS.pipe;
+    if(y === 0){
+      ctx.translate(x, y + h);
+      ctx.scale(1, -1);
+      ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, PIPE_WIDTH, h);
+    } else {
+      ctx.drawImage(img, 0, 0, img.width, img.height, x, y, PIPE_WIDTH, h);
+    }
+  } else {
+    ctx.fillStyle = '#2f9a2f';
+    ctx.fillRect(x, y, PIPE_WIDTH, h);
+    ctx.fillStyle = '#1f7f1f';
+    ctx.fillRect(x, y, PIPE_WIDTH, 12);
+  }
+  ctx.restore();
+}
+
+function playSound(name){
+  const url = ASSETS.sfx[name];
+  if(url){
+    const au = new Audio(url);
+    au.volume = 0.5;
+    au.play().catch(()=>{/*ignore*/});
+    return;
+  }
+  try{
+    const ctxA = (window._sharedAudioCtx = window._sharedAudioCtx || new (window.AudioContext || window.webkitAudioContext)());
+    if(name === 'flap'){
+      const o = ctxA.createOscillator(); const g = ctxA.createGain();
+      o.type = 'triangle'; o.frequency.value = 600; g.gain.value = 0.05;
+      o.connect(g); g.connect(ctxA.destination); o.start(); o.stop(ctxA.currentTime + 0.08);
+    } else if(name === 'score'){
+      const o = ctxA.createOscillator(); const g = ctxA.createGain();
+      o.type = 'sine'; o.frequency.value = 900; g.gain.value = 0.03;
+      o.connect(g); g.connect(ctxA.destination); o.start(); o.stop(ctxA.currentTime + 0.12);
+    } else {
+      const o = ctxA.createOscillator(); const g = ctxA.createGain();
+      o.type = 'sawtooth'; o.frequency.value = 120; g.gain.value = 0.06;
+      o.connect(g); g.connect(ctxA.destination); o.start(); o.stop(ctxA.currentTime + 0.16);
+    }
+  }catch(e){}
+}
+
+function flap(){
+  if(!state.running){
+    // start (or restart if prior game run)
+    startGame();
+  }
+  state.bird.vy = SETTINGS.flapStrength;
+  playSound('flap');
+}
+
+window.addEventListener('keydown', (e) => {
+  if(e.code === 'Space'){
+    e.preventDefault();
+    flap();
+  } else if(e.key === 'r' || e.key === 'R'){
+    restartGame();
+  }
+});
+canvas.addEventListener('mousedown', (e) => { flap(); });
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); flap(); }, {passive:false});
+
+function loop(ts){
+  if(!lastTime) lastTime = ts;
+  const dt = ts - lastTime;
+  lastTime = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* UI: Start now restarts if not running (avoids stale Game Over state) */
+document.getElementById('btnStart').addEventListener('click', ()=> {
+  if(!state.running && state.frame > 0){
+    restartGame();
+  } else {
+    startGame();
+  }
+});
+document.getElementById('btnRestart').addEventListener('click', ()=> restartGame());
+document.getElementById('btnAssets').addEventListener('click', showAssetInfo);
+
+function showAssetInfo(){
+  alert(
+`Assets (editable):
+- ASSETS.bird  -> replace with 'assets/mybird.png' or your URL
+- ASSETS.pipe
+- ASSETS.bg
+- ASSETS.sfx.flap|score|hit
+
+After changing ASSETS, reload the page.`);
+}
+
+/* Boot */
+(async function bootstrap(){
+  resetState();
+  await preload();
+  resizeCanvas();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
+
