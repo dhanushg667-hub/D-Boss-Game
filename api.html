@@ -61,6 +61,186 @@
       padding: 6px 10px;
       border-radius: 8px;
       cursor: pointer;
+      transition: background 0.18s, box-shadow 0.18s;
+      font-size: 13px;
+    }
+
+    .controls button:hover {
+      background: #f0f4ff;
+      box-shadow: 0 2px 8px rgba(80, 100, 200, 0.13);
+    }
+
+    #btnShare {
+      background: linear-gradient(135deg, #4f8ef7 0%, #7b5ea7 100%);
+      color: #fff;
+      border: none;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      box-shadow: 0 2px 10px rgba(79, 142, 247, 0.28);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 14px;
+    }
+
+    #btnShare:hover {
+      background: linear-gradient(135deg, #3a7de8 0%, #6a4d97 100%);
+      box-shadow: 0 3px 14px rgba(79, 142, 247, 0.38);
+      color: #fff;
+    }
+
+    /* Share Modal */
+    .share-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(3px);
+    }
+
+    .share-overlay.open {
+      display: flex;
+      animation: fadeIn 0.18s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    .share-modal {
+      background: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 22px;
+      width: 320px;
+      max-width: 92vw;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+      animation: slideUp 0.22s cubic-bezier(.32, 1.28, .42, .98);
+      position: relative;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(30px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .share-modal h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+      font-weight: 800;
+      color: #222;
+    }
+
+    .share-modal .share-score-info {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 20px;
+    }
+
+    .share-modal .share-score-info strong {
+      color: #4f8ef7;
+    }
+
+    .share-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .share-btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .share-actions .s-btn {
+      flex: 1;
+      padding: 10px 0;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+
+    .share-actions .s-btn:active {
+      transform: scale(0.96);
+    }
+
+    .s-btn.native-share {
+      background: linear-gradient(135deg, #4f8ef7, #7b5ea7);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(79, 142, 247, 0.22);
+    }
+
+    .s-btn.copy-link {
+      background: #f0f4ff;
+      color: #4f8ef7;
+      border: 1.5px solid #c5d8fd;
+    }
+
+    .s-btn.close-modal {
+      background: #f5f5f5;
+      color: #666;
+    }
+
+    .share-modal .close-x {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: #aaa;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 50%;
+      transition: background 0.15s;
+    }
+
+    .share-modal .close-x:hover {
+      background: #f0f0f0;
+      color: #555;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #222;
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 2000;
+      transition: opacity 0.22s, transform 0.22s;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
 
     canvas {
@@ -106,6 +286,7 @@
           <button id="btnStart">Start</button>
           <button id="btnRestart">Restart</button>
           <button id="btnAssets">Show assets</button>
+          <button id="btnShare">📤 Share</button>
         </div>
       </header>
 
@@ -117,6 +298,26 @@
       </div>
     </div>
   </div>
+
+  <!-- Share Modal -->
+  <div class="share-overlay" id="shareOverlay" role="dialog" aria-modal="true" aria-label="Share your score">
+    <div class="share-modal">
+      <button class="close-x" id="shareCloseX" aria-label="Close">✕</button>
+      <h2>🎮 Share Score!</h2>
+      <div class="share-score-info" id="shareScoreInfo">Score: <strong id="shareCurrentScore">0</strong> &nbsp;|&nbsp;
+        Best: <strong id="shareHighScore">0</strong></div>
+      <div class="share-actions">
+        <div class="share-btn-row">
+          <button class="s-btn native-share" id="btnNativeShare">📤 Share</button>
+          <button class="s-btn copy-link" id="btnCopyLink">🔗 Copy Link</button>
+        </div>
+        <button class="s-btn close-modal" id="btnCloseModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
 
   <script>
     /* ASSETS same approach as before (data URIs for convenience). Replace as needed. */
@@ -449,6 +650,78 @@
     });
     document.getElementById('btnRestart').addEventListener('click', () => restartGame());
     document.getElementById('btnAssets').addEventListener('click', showAssetInfo);
+
+    /* ── Share Logic ── */
+    const shareOverlay = document.getElementById('shareOverlay');
+    const shareCloseX = document.getElementById('shareCloseX');
+    const btnCloseModal = document.getElementById('btnCloseModal');
+    const btnNativeShare = document.getElementById('btnNativeShare');
+    const btnCopyLink = document.getElementById('btnCopyLink');
+    const toast = document.getElementById('toast');
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2400);
+    }
+
+    function openShareModal() {
+      document.getElementById('shareCurrentScore').textContent = state.score || 0;
+      document.getElementById('shareHighScore').textContent = state.highScore || 0;
+      // Hide native share button if API not available
+      btnNativeShare.style.display = navigator.share ? '' : 'none';
+      shareOverlay.classList.add('open');
+    }
+    function closeShareModal() {
+      shareOverlay.classList.remove('open');
+    }
+
+    document.getElementById('btnShare').addEventListener('click', openShareModal);
+    shareCloseX.addEventListener('click', closeShareModal);
+    btnCloseModal.addEventListener('click', closeShareModal);
+    shareOverlay.addEventListener('click', (e) => { if (e.target === shareOverlay) closeShareModal(); });
+
+    btnNativeShare.addEventListener('click', async () => {
+      const score = state.score || 0;
+      const best = state.highScore || 0;
+      try {
+        await navigator.share({
+          title: 'Dboss Flappy Bird',
+          text: `🐦 I scored ${score} points (Best: ${best}) in Dboss Flappy Bird! Can you beat me?`,
+          url: window.location.href
+        });
+        closeShareModal();
+      } catch (err) {
+        if (err.name !== 'AbortError') showToast('Could not share. Try copying the link!');
+      }
+    });
+
+    btnCopyLink.addEventListener('click', () => {
+      const score = state.score || 0;
+      const best = state.highScore || 0;
+      const text = `🐦 I scored ${score} points (Best: ${best}) in Dboss Flappy Bird! ${window.location.href}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('✅ Copied to clipboard!');
+        }).catch(() => showToast('❌ Could not copy. Please copy manually.'));
+      } else {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); showToast('✅ Copied to clipboard!'); }
+        catch (e) { showToast('❌ Could not copy.'); }
+        document.body.removeChild(ta);
+      }
+      closeShareModal();
+    });
+
+    // Close modal with Escape key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && shareOverlay.classList.contains('open')) closeShareModal();
+    });
 
     function showAssetInfo() {
       alert(
